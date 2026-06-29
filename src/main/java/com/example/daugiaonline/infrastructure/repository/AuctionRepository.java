@@ -32,7 +32,7 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
 
     @Query("SELECT a FROM Auction a WHERE " +
            "(:keyword IS NULL OR LOWER(a.title) LIKE LOWER(CONCAT('%', :keyword, '%'))) AND " +
-           "(:categoryId IS NULL OR a.categoryId = :categoryId) AND " +
+           "(:categoryId IS NULL OR a.category.id = :categoryId) AND " + 
            "(:minPrice IS NULL OR COALESCE(a.currentPrice, a.startPrice) >= :minPrice) AND " +
            "(:maxPrice IS NULL OR COALESCE(a.currentPrice, a.startPrice) <= :maxPrice) AND " +
            "(:status IS NULL OR a.status = :status)")
