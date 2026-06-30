@@ -14,9 +14,9 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins(frontendUrl.split(",")) 
+                .allowedOriginPatterns(frontendUrl.split(",")) // ĐÃ ĐỔI SANG OriginPatterns
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") 
                 .allowedHeaders("*")
-                .allowCredentials(true); // THÊM DÒNG NÀY ĐỂ WEBSOCKET VÀ LOGIN HOẠT ĐỘNG
+                .allowCredentials(true); 
     }
 }
