@@ -13,9 +13,10 @@ public class CorsConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**") // Cho phép tất cả các endpoint
-                .allowedOrigins(frontendUrl.split(",")) // Cho phép đọc từ biến môi trường
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // Cho phép mọi method
-                .allowedHeaders("*"); // Cho phép mọi header
+        registry.addMapping("/**")
+                .allowedOrigins(frontendUrl.split(",")) 
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") 
+                .allowedHeaders("*")
+                .allowCredentials(true); // THÊM DÒNG NÀY ĐỂ WEBSOCKET VÀ LOGIN HOẠT ĐỘNG
     }
 }

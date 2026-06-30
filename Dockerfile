@@ -15,5 +15,5 @@ COPY --from=build /app/target/*.jar app.jar
 # Mở cổng 8080 cho Render nhận diện
 EXPOSE 8080
 
-# Chạy server với lệnh ép giới hạn RAM tối đa 256MB
-ENTRYPOINT ["java", "-Xmx256m", "-jar", "app.jar"]
+# Chạy server với lệnh ép RAM cực mạnh và tối ưu hóa GC
+ENTRYPOINT ["java", "-Xmx256m", "-Xss512k", "-XX:MaxMetaspaceSize=128m", "-XX:+UseSerialGC", "-jar", "app.jar"]
