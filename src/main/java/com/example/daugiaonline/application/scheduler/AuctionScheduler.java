@@ -23,4 +23,15 @@ public class AuctionScheduler {
             log.error("Error occurred while processing expired auctions: ", e);
         }
     }
+
+    // Chạy mỗi giờ (3600000ms) để kiểm tra các phiên đấu giá bùng kèo
+    @Scheduled(fixedRate = 3600000)
+    public void checkUnpaidAuctions() {
+        log.info("Running scheduled task to check for unpaid auctions...");
+        try {
+            auctionService.processUnpaidAuctions();
+        } catch (Exception e) {
+            log.error("Error occurred while processing unpaid auctions: ", e);
+        }
+    }
 }

@@ -11,10 +11,22 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import java.time.LocalDateTime;
 import java.util.List;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 
 @Repository
 public interface AuctionRepository extends JpaRepository<Auction, Long> {
+    
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Auction a WHERE a.id = :id")
+    java.util.Optional<Auction> findByIdWithLock(@Param("id") Long id);
+
     List<Auction> findByStatusAndBidEndTimeBefore(AuctionStatus status, LocalDateTime currentTime);
+    
+    @Query("SELECT a FROM Auction a WHERE a.status = :status AND a.bidEndTime < :cutoffTime")
+    List<Auction> findUnpaidAuctions(@Param("status") AuctionStatus status, @Param("cutoffTime") LocalDateTime cutoffTime);
+
+    List<Auction> findByStatusOrderByIdDesc(AuctionStatus status);
     List<Auction> findBySellerIdOrderByIdDesc(Long sellerId);
     List<Auction> findByWinnerIdAndStatusInOrderByIdDesc(Long winnerId, List<AuctionStatus> statuses);
 

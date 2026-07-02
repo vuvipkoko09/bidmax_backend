@@ -86,5 +86,5 @@ public class Auction extends BaseEntity {
     private Double winningPrice;
 
     @Version
-    private Long version;
+    private Long version = 0L;
 }

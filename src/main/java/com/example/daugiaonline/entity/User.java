@@ -2,6 +2,7 @@ package com.example.daugiaonline.entity;
 
 import com.example.daugiaonline.enums.UserStatus;
 import jakarta.persistence.Column;
+import java.time.LocalDateTime;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -29,7 +30,7 @@ public class User extends BaseEntity {
     @Column(name = "username", nullable = false, unique = true)
     private String username;
 
-    @Column(name = "password", nullable = false)
+    @Column(name = "password", nullable = false, length = 255)
     private String password;
 
     @Column(name = "email", nullable = false, unique = true)
@@ -53,4 +54,13 @@ public class User extends BaseEntity {
     @Column(name = "status", nullable = false, columnDefinition = "varchar(32) default 'ACTIVE'")
     @Builder.Default
     private UserStatus status = UserStatus.ACTIVE;
+
+    @Column(name = "reset_token")
+    private String resetToken;
+
+    @Column(name = "reset_token_expiry")
+    private LocalDateTime resetTokenExpiry;
+
+    @Column(name = "cccd", length = 20)
+    private String cccd;
 }

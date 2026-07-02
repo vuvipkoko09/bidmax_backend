@@ -36,6 +36,18 @@ public class OrderServiceImpl implements OrderService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    @Transactional
+    public OrderDetailResponse updateOrderStatus(Long orderId, com.example.daugiaonline.enums.OrderStatus status) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+        
+        order.setStatus(status);
+        orderRepository.save(order);
+        
+        return mapToResponse(order);
+    }
+
     private OrderDetailResponse mapToResponse(Order order) {
         return OrderDetailResponse.builder()
                 .orderId(order.getId())

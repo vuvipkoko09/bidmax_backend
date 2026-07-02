@@ -7,4 +7,5 @@ import java.util.List;
 public interface OrderService {
     OrderDetailResponse getOrderDetails(Long orderId);
     List<OrderDetailResponse> getAllOrders();
+    OrderDetailResponse updateOrderStatus(Long orderId, com.example.daugiaonline.enums.OrderStatus status);
 }

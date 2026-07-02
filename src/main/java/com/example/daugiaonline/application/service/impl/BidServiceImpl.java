@@ -34,7 +34,7 @@ public class BidServiceImpl implements BidService {
     @Override
     @Transactional
     public BidHistoryResponse placeBid(PlaceBidRequest request) {
-        Auction auction = auctionRepository.findById(request.getAuctionId())
+        Auction auction = auctionRepository.findByIdWithLock(request.getAuctionId())
                 .orElseThrow(() -> new ResourceNotFoundException("Auction not found with id: " + request.getAuctionId()));
 
         User user = userRepository.findById(request.getUserId())
@@ -100,6 +100,14 @@ public class BidServiceImpl implements BidService {
     @Transactional(readOnly = true)
     public List<BidHistoryResponse> getBidHistory(Long auctionId) {
         return bidRepository.findByAuctionIdOrderByBidAmountDesc(auctionId).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BidHistoryResponse> getBidsByUser(Long userId) {
+        return bidRepository.findByUserIdOrderByBidTimeDesc(userId).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }

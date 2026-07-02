@@ -14,7 +14,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Base64;
+import java.time.LocalDateTime;
+import java.util.Random;
+
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import com.example.daugiaonline.application.dto.ForgotPasswordRequest;
+import com.example.daugiaonline.application.dto.ResetPasswordRequest;
+import com.example.daugiaonline.application.service.EmailService;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +29,8 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final EmailService emailService;
+    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Override
     @Transactional
@@ -36,7 +45,7 @@ public class AuthServiceImpl implements AuthService {
         Role role = roleRepository.findByRoleName(request.getRoleName())
                 .orElseThrow(() -> new ResourceNotFoundException("Role not found: " + request.getRoleName()));
 
-        String hashedPassword = mockHash(request.getPassword());
+        String hashedPassword = passwordEncoder.encode(request.getPassword());
 
         User user = User.builder()
                 .username(request.getUsername())
@@ -56,8 +65,9 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new BadRequestException("Invalid username or password"));
 
-        String hashedInput = mockHash(request.getPassword());
-        if (!user.getPassword().equals(hashedInput)) {
+        System.out.println("DEBUG - Fetched password from DB for user " + user.getUsername() + ": " + user.getPassword());
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new BadRequestException("Invalid username or password");
         }
 
@@ -75,10 +85,44 @@ public class AuthServiceImpl implements AuthService {
         return "mock-jwt-token-for-" + user.getUsername();
     }
 
-    private String mockHash(String password) {
-        if (password == null) {
-            return "";
+    @Override
+    @Transactional
+    public void forgotPassword(ForgotPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + request.getEmail()));
+
+        String otp = String.format("%06d", new Random().nextInt(999999));
+        user.setResetToken(otp);
+        user.setResetTokenExpiry(LocalDateTime.now().plusMinutes(10));
+        userRepository.save(user);
+
+        String htmlBody = "<html><body>"
+                + "<h2>Yêu cầu đặt lại mật khẩu</h2>"
+                + "<p>Chào bạn,</p>"
+                + "<p>Mã xác thực (OTP) đặt lại mật khẩu của bạn là: <b>" + otp + "</b></p>"
+                + "<p>Mã này có hiệu lực trong vòng 10 phút. Nếu bạn không yêu cầu, vui lòng bỏ qua email này.</p>"
+                + "</body></html>";
+
+        emailService.sendHtmlEmail(user.getEmail(), "Mã xác thực đặt lại mật khẩu", htmlBody);
+    }
+
+    @Override
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + request.getEmail()));
+
+        if (user.getResetToken() == null || !user.getResetToken().equals(request.getOtp())) {
+            throw new BadRequestException("Mã OTP không hợp lệ");
         }
-        return "$2a$10$mockHashed_" + Base64.getEncoder().encodeToString(password.getBytes());
+
+        if (user.getResetTokenExpiry() == null || user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Mã OTP đã hết hạn");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setResetToken(null);
+        user.setResetTokenExpiry(null);
+        userRepository.save(user);
     }
 }

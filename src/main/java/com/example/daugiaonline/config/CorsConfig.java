@@ -14,7 +14,7 @@ public class CorsConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOriginPatterns(frontendUrl.split(",")) // ĐÃ ĐỔI SANG OriginPatterns
+                .allowedOriginPatterns("*") // Cho phép localhost và cả các trang web đã deploy
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") 
                 .allowedHeaders("*")
                 .allowCredentials(true); 

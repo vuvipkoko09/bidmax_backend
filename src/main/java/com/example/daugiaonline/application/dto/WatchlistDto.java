@@ -16,5 +16,8 @@ public class WatchlistDto {
     private Long userId;
     private Long auctionId;
     private String auctionTitle;
+    private Double currentPrice;
+    private String status;
+    private String thumbnail;
     private LocalDateTime addedAt;
 }

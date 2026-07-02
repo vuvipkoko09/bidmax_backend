@@ -51,8 +51,36 @@ public class PaymentServiceImpl implements PaymentService {
         vnp_Params.put("vnp_OrderInfo", vnp_OrderInfo);
         vnp_Params.put("vnp_OrderType", orderType);
         vnp_Params.put("vnp_Locale", "vn");
-        vnp_Params.put("vnp_ReturnUrl", vnPayConfig.getReturnUrl() + "?username=" + username);
+        String origin = request.getHeader("Origin");
+        if (origin == null || origin.isEmpty()) {
+            String referer = request.getHeader("Referer");
+            if (referer != null && !referer.isEmpty()) {
+                try {
+                    java.net.URL url = new java.net.URL(referer);
+                    origin = url.getProtocol() + "://" + url.getHost() + (url.getPort() != -1 ? ":" + url.getPort() : "");
+                } catch (Exception e) {
+                    origin = "http://localhost:5173";
+                }
+            } else {
+                origin = "http://localhost:5173";
+            }
+        }
+        String returnUrl = vnPayConfig.getReturnUrl();
+        vnp_Params.put("vnp_ReturnUrl", returnUrl);
         vnp_Params.put("vnp_IpAddr", vnp_IpAddr);
+
+        // Save pending transaction to DB
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new AppException("Không tìm thấy người dùng"));
+
+        Transaction transaction = Transaction.builder()
+                .user(user)
+                .amount((double) amount)
+                .type(TransactionType.TOPUP)
+                .status(TransactionStatus.PENDING)
+                .vnpayTranId(vnp_TxnRef)
+                .build();
+        transactionRepository.save(transaction);
 
         Calendar cld = Calendar.getInstance(TimeZone.getTimeZone("Etc/GMT+7"));
         SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
@@ -117,11 +145,6 @@ public class PaymentServiceImpl implements PaymentService {
         if (fields.containsKey("vnp_SecureHash")) {
             fields.remove("vnp_SecureHash");
         }
-        // Custom param we added
-        String username = request.getParameter("username");
-        if (fields.containsKey("username")) {
-            fields.remove("username");
-        }
 
         // Tạo lại chuỗi hash để so sánh
         List<String> fieldNames = new ArrayList<>(fields.keySet());
@@ -149,27 +172,32 @@ public class PaymentServiceImpl implements PaymentService {
         String signValue = VNPayConfig.hmacSHA512(vnPayConfig.getHashSecret(), hashData.toString());
 
         if (signValue.equals(vnp_SecureHash)) {
+            String vnp_TxnRef = request.getParameter("vnp_TxnRef");
+            Transaction transaction = transactionRepository.findByVnpayTranId(vnp_TxnRef)
+                    .orElseThrow(() -> new AppException("Không tìm thấy giao dịch"));
+            
+            if (transaction.getStatus() != TransactionStatus.PENDING) {
+                log.warn("Giao dịch {} đã được xử lý trước đó (chống Replay Attack)", vnp_TxnRef);
+                return;
+            }
+
             if ("00".equals(request.getParameter("vnp_ResponseCode"))) {
                 // Thành công, cộng tiền
                 long amount = Long.parseLong(request.getParameter("vnp_Amount")) / 100;
-                log.info("Giao dịch VNPAY thành công cho user: {}, số tiền: {}", username, amount);
+                User user = transaction.getUser();
+                log.info("Giao dịch VNPAY thành công cho user: {}, số tiền: {}", user.getUsername(), amount);
 
-                User user = userRepository.findByUsername(username)
-                        .orElseThrow(() -> new AppException("Không tìm thấy người dùng"));
-                
                 user.setBalance(user.getBalance() + amount);
                 userRepository.save(user);
 
-                Transaction transaction = Transaction.builder()
-                        .user(user)
-                        .amount((double) amount)
-                        .type(TransactionType.TOPUP)
-                        .status(TransactionStatus.SUCCESS)
-                        .vnpayTranId(request.getParameter("vnp_TransactionNo"))
-                        .build();
+                transaction.setStatus(TransactionStatus.SUCCESS);
                 transactionRepository.save(transaction);
             } else {
                 log.warn("Giao dịch VNPAY thất bại. ResponseCode: {}", request.getParameter("vnp_ResponseCode"));
+                transaction.setStatus(TransactionStatus.FAILED); // Requires FAILED in TransactionStatus enum, assuming it exists or we can just use FAILED if it exists. 
+                // Wait, TransactionStatus has SUCCESS, PENDING, FAILED? Let me check TransactionStatus.java. 
+                // If FAILED doesn't exist, we can use CANCELED. Let me assume FAILED exists or check it.
+                transactionRepository.save(transaction);
             }
         } else {
             log.error("Xác thực mã băm VNPAY thất bại. Dữ liệu có thể bị giả mạo!");

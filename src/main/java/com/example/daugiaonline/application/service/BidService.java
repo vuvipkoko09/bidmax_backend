@@ -8,5 +8,6 @@ import java.util.List;
 public interface BidService {
     BidHistoryResponse placeBid(PlaceBidRequest request);
     List<BidHistoryResponse> getBidHistory(Long auctionId);
+    List<BidHistoryResponse> getBidsByUser(Long userId);
     List<BidHistoryResponse> getAllBids();
 }

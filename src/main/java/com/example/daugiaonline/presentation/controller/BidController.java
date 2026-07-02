@@ -53,6 +53,11 @@ public class BidController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<BidHistoryResponse>> getBidsByUser(@PathVariable Long userId) {
+        return ResponseEntity.ok(bidService.getBidsByUser(userId));
+    }
+
     @GetMapping
     public ResponseEntity<List<BidHistoryResponse>> getAllBids() {
         return ResponseEntity.ok(bidService.getAllBids());

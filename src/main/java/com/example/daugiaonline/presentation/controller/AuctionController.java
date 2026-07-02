@@ -19,8 +19,8 @@ public class AuctionController {
     private final AuctionService auctionService;
 
     @GetMapping
-    public ResponseEntity<List<AuctionDto>> getAllAuctions() {
-        return ResponseEntity.ok(auctionService.getAllAuctions());
+    public ResponseEntity<List<AuctionDto>> getAllAuctions(@RequestParam(required = false) com.example.daugiaonline.enums.AuctionStatus status) {
+        return ResponseEntity.ok(auctionService.getAllAuctions(status));
     }
 
     @GetMapping("/{id}")

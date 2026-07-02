@@ -74,11 +74,17 @@ public class WatchlistServiceImpl implements WatchlistService {
     }
 
     private WatchlistDto mapToDto(Watchlist watchlist) {
+        Auction auction = watchlist.getAuction();
+        String thumbnail = auction.getThumbnail();
+
         return WatchlistDto.builder()
                 .id(watchlist.getId())
                 .userId(watchlist.getUser().getId())
-                .auctionId(watchlist.getAuction().getId())
-                .auctionTitle(watchlist.getAuction().getTitle())
+                .auctionId(auction.getId())
+                .auctionTitle(auction.getTitle())
+                .currentPrice(auction.getCurrentPrice())
+                .status(auction.getStatus().name())
+                .thumbnail(thumbnail)
                 .addedAt(watchlist.getAddedAt())
                 .build();
     }

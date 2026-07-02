@@ -10,7 +10,7 @@ import com.example.daugiaonline.enums.AuctionStatus;
 import java.util.List;
 
 public interface AuctionService {
-    List<AuctionDto> getAllAuctions();
+    List<AuctionDto> getAllAuctions(AuctionStatus status);
 
     AuctionDto getAuctionById(Long id);
 
@@ -25,6 +25,7 @@ public interface AuctionService {
     void deleteAuction(Long id);
 
     void processExpiredAuctions();
+    void processUnpaidAuctions();
     
     List<AuctionDto> getMyWonAuctions(Long userId);
 

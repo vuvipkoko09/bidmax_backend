@@ -1,5 +1,6 @@
 package com.example.daugiaonline.presentation.controller;
 
+import com.example.daugiaonline.application.dto.ChangePasswordRequest;
 import com.example.daugiaonline.application.dto.UpdateProfileRequest;
 import com.example.daugiaonline.application.dto.UserProfileResponse;
 import com.example.daugiaonline.application.service.UserService;
@@ -69,5 +70,20 @@ public class UserController {
         UserStatus status = UserStatus.valueOf(body.get("status"));
         UserProfileResponse response = userService.updateUserStatus(id, status);
         return ResponseEntity.ok(response);
+    }
+    @PostMapping("/{id}/register-seller")
+    public ResponseEntity<UserProfileResponse> registerAsSeller(
+            @PathVariable Long id,
+            @Valid @RequestBody com.example.daugiaonline.application.dto.SellerRegistrationRequest request) {
+        UserProfileResponse response = userService.registerAsSeller(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{id}/password")
+    public ResponseEntity<Map<String, String>> changePassword(
+            @PathVariable Long id,
+            @Valid @RequestBody ChangePasswordRequest request) {
+        userService.changePassword(id, request);
+        return ResponseEntity.ok(Map.of("message", "Đổi mật khẩu thành công"));
     }
 }

@@ -9,16 +9,25 @@ import com.example.daugiaonline.application.service.UserService;
 import com.example.daugiaonline.entity.User;
 import com.example.daugiaonline.enums.UserStatus;
 import com.example.daugiaonline.exception.ResourceNotFoundException;
+import com.example.daugiaonline.entity.Role;
+import com.example.daugiaonline.enums.RoleName;
+import com.example.daugiaonline.infrastructure.repository.RoleRepository;
 import com.example.daugiaonline.infrastructure.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.example.daugiaonline.exception.BadRequestException;
+import com.example.daugiaonline.application.dto.ChangePasswordRequest;
 
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Override
     @Transactional(readOnly = true)
@@ -45,6 +54,7 @@ public class UserServiceImpl implements UserService {
 
         user.setPhone(request.getPhone());
         user.setAddress(request.getAddress());
+        user.setCccd(request.getCccd());
         User updatedUser = userRepository.save(user);
 
         return mapToProfileResponse(updatedUser);
@@ -77,6 +87,37 @@ public class UserServiceImpl implements UserService {
         return mapToProfileResponse(updatedUser);
     }
 
+    @Override
+    @Transactional
+    public UserProfileResponse registerAsSeller(Long userId, com.example.daugiaonline.application.dto.SellerRegistrationRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+
+        user.setPhone(request.getPhone());
+        user.setAddress(request.getAddress());
+
+        Role sellerRole = roleRepository.findByRoleName(RoleName.SELLER)
+                .orElseThrow(() -> new RuntimeException("Error: Role is not found."));
+        user.setRole(sellerRole);
+
+        User updatedUser = userRepository.save(user);
+        return mapToProfileResponse(updatedUser);
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(Long userId, ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
+            throw new BadRequestException("Mật khẩu cũ không chính xác");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+    }
+
     private UserProfileResponse mapToProfileResponse(User user) {
         return UserProfileResponse.builder()
                 .id(user.getId())
@@ -87,6 +128,7 @@ public class UserServiceImpl implements UserService {
                 .balance(user.getBalance())
                 .roleName(user.getRole() != null ? user.getRole().getRoleName() : null)
                 .status(user.getStatus() != null ? user.getStatus() : UserStatus.ACTIVE)
+                .cccd(user.getCccd())
                 .build();
     }
 }

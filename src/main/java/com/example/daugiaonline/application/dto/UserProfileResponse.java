@@ -20,4 +20,5 @@ public class UserProfileResponse {
     private Double balance;
     private RoleName roleName;
     private UserStatus status;
+    private String cccd;
 }

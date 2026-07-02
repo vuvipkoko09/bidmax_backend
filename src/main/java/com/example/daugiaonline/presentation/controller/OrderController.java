@@ -28,4 +28,11 @@ public class OrderController {
     public ResponseEntity<List<OrderDetailResponse>> getAllOrders() {
         return ResponseEntity.ok(orderService.getAllOrders());
     }
+
+    @org.springframework.web.bind.annotation.PutMapping("/{id}/status")
+    public ResponseEntity<OrderDetailResponse> updateOrderStatus(
+            @PathVariable Long id,
+            @org.springframework.web.bind.annotation.RequestParam com.example.daugiaonline.enums.OrderStatus status) {
+        return ResponseEntity.ok(orderService.updateOrderStatus(id, status));
+    }
 }

@@ -12,7 +12,9 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
-import java.util.Base64;
+import java.util.List;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @Component
 @RequiredArgsConstructor
@@ -38,11 +40,13 @@ public class DatabaseSeeder implements CommandLineRunner {
     private final ReviewRepository reviewRepository;
     private final TransactionRepository transactionRepository;
     private final WatchlistRepository watchlistRepository;
+    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Override
     public void run(String... args) throws Exception {
         seedRoles();
         seedUsers();
+        migratePlaintextPasswords();
         seedCategories();
         seedLocations();
         seedAuctions();
@@ -50,9 +54,21 @@ public class DatabaseSeeder implements CommandLineRunner {
         log.info("Database seeding completed.");
     }
 
+    private void migratePlaintextPasswords() {
+        java.util.List<User> users = userRepository.findAll();
+        for (User user : users) {
+            // BCrypt hashes start with $2a$, $2b$, or $2y$
+            if (user.getPassword() != null && !user.getPassword().startsWith("$2")) {
+                log.info("Migrating plaintext password for user: {}", user.getUsername());
+                user.setPassword(passwordEncoder.encode(user.getPassword()));
+                userRepository.save(user);
+            }
+        }
+    }
+
     private String mockHash(String password) {
         if (password == null) return null;
-        return "$2a$10$mockHashed_" + Base64.getEncoder().encodeToString(password.getBytes());
+        return passwordEncoder.encode(password);
     }
 
     private void seedRoles() {
@@ -65,44 +81,33 @@ public class DatabaseSeeder implements CommandLineRunner {
     }
 
     private void seedUsers() {
-        if (userRepository.count() == 0) {
-            log.info("Seeding users...");
-            Role adminRole = roleRepository.findByRoleName(RoleName.ADMIN).orElseThrow();
-            Role sellerRole = roleRepository.findByRoleName(RoleName.SELLER).orElseThrow();
-            Role userRole = roleRepository.findByRoleName(RoleName.USER).orElseThrow();
+        log.info("Seeding users...");
+        Role adminRole = roleRepository.findByRoleName(RoleName.ADMIN).orElseThrow();
+        Role sellerRole = roleRepository.findByRoleName(RoleName.SELLER).orElseThrow();
+        Role userRole = roleRepository.findByRoleName(RoleName.USER).orElseThrow();
 
-            User admin = User.builder()
-                    .username("admin")
-                    .password(mockHash("admin123"))
-                    .email("admin@bidmax.com")
-                    .balance(100000000.0)
-                    .phone("0987654321")
-                    .address("Hà Nội")
-                    .role(adminRole)
+        upsertUser("vb", "admin123", "admin@bidmax.com", adminRole, 100000000.0, "0987654321", "Hà Nội");
+        upsertUser("seller1", "seller123", "seller1@bidmax.com", sellerRole, 0.0, "0123456789", "Hồ Chí Minh");
+        upsertUser("seller2", "seller123", "seller2@bidmax.com", sellerRole, 0.0, "0981112222", "Đà Nẵng");
+        upsertUser("user1", "user123", "user1@bidmax.com", userRole, 5000000.0, "0111222333", "Đà Nẵng");
+        upsertUser("user2", "user123", "user2@bidmax.com", userRole, 15000000.0, "0998887777", "Cần Thơ");
+    }
+
+    private void upsertUser(String username, String rawPassword, String email, Role role, Double balance, String phone, String address) {
+        User user = userRepository.findByUsername(username).orElse(null);
+        if (user == null) {
+            user = User.builder()
+                    .username(username)
+                    .email(email)
+                    .balance(balance)
+                    .phone(phone)
+                    .address(address)
+                    .role(role)
                     .build();
-
-            User seller = User.builder()
-                    .username("seller1")
-                    .password(mockHash("seller123"))
-                    .email("seller1@bidmax.com")
-                    .balance(0.0)
-                    .phone("0123456789")
-                    .address("Hồ Chí Minh")
-                    .role(sellerRole)
-                    .build();
-
-            User user1 = User.builder()
-                    .username("user1")
-                    .password(mockHash("user123"))
-                    .email("user1@bidmax.com")
-                    .balance(5000000.0)
-                    .phone("0111222333")
-                    .address("Đà Nẵng")
-                    .role(userRole)
-                    .build();
-
-            userRepository.saveAll(Arrays.asList(admin, seller, user1));
         }
+        // Always reset to a valid BCrypt hash
+        user.setPassword(mockHash(rawPassword));
+        userRepository.save(user);
     }
 
     private void seedCategories() {
@@ -209,7 +214,75 @@ public class DatabaseSeeder implements CommandLineRunner {
                         .winner(userRepository.findByUsername("user1").orElse(null))
                         .build();
 
-                auctionRepository.saveAll(Arrays.asList(auction1, auction2, auction3, auction4));
+                Auction auction5 = Auction.builder()
+                        .title("Macbook Pro M3 Max 16-inch 2023")
+                        .description("Máy tính xách tay cấu hình cao nhất. Mới 100%, bảo hành Apple Care+ 3 năm.")
+                        .startPrice(90000000.0)
+                        .currentPrice(95000000.0)
+                        .stepPrice(1000000.0)
+                        .depositAmount(5000000.0)
+                        .status(AuctionStatus.ACTIVE)
+                        .regStartTime(LocalDateTime.now().minusDays(1))
+                        .regEndTime(LocalDateTime.now().plusDays(1))
+                        .bidStartTime(LocalDateTime.now().plusDays(2))
+                        .bidEndTime(LocalDateTime.now().plusDays(5))
+                        .category(categoryRepository.findAll().stream().filter(c -> c.getName().equals("Đồ điện tử")).findFirst().orElse(watch))
+                        .location(hn)
+                        .seller(seller)
+                        .build();
+
+                Auction auction6 = Auction.builder()
+                        .title("Túi xách Hermes Birkin 30 Crocodile")
+                        .description("Túi xách da cá sấu cao cấp. Màu đen bóng, phụ kiện mạ vàng đính kim cương.")
+                        .startPrice(500000000.0)
+                        .currentPrice(520000000.0)
+                        .stepPrice(10000000.0)
+                        .depositAmount(50000000.0)
+                        .status(AuctionStatus.ACTIVE)
+                        .regStartTime(LocalDateTime.now().minusDays(5))
+                        .regEndTime(LocalDateTime.now().minusDays(1))
+                        .bidStartTime(LocalDateTime.now())
+                        .bidEndTime(LocalDateTime.now().plusDays(3))
+                        .category(categoryRepository.findAll().stream().filter(c -> c.getName().equals("Trang sức")).findFirst().orElse(watch))
+                        .location(hn)
+                        .seller(seller)
+                        .build();
+
+                Auction auction7 = Auction.builder()
+                        .title("Tượng Phật Ngọc ngọc bích tự nhiên")
+                        .description("Tượng Phật Ngọc nguyên khối nặng 5kg. Chạm khắc thủ công tinh xảo.")
+                        .startPrice(100000000.0)
+                        .currentPrice(105000000.0)
+                        .stepPrice(2000000.0)
+                        .depositAmount(10000000.0)
+                        .status(AuctionStatus.ACTIVE)
+                        .regStartTime(LocalDateTime.now().minusDays(3))
+                        .regEndTime(LocalDateTime.now().plusDays(1))
+                        .bidStartTime(LocalDateTime.now().plusDays(2))
+                        .bidEndTime(LocalDateTime.now().plusDays(7))
+                        .category(art)
+                        .location(hn)
+                        .seller(seller)
+                        .build();
+
+                Auction auction8 = Auction.builder()
+                        .title("Nhẫn Kim Cương tự nhiên 2 Carat")
+                        .description("Nhẫn kim cương nước D, độ tinh khiết VVS1. Giấy kiểm định GIA.")
+                        .startPrice(300000000.0)
+                        .currentPrice(350000000.0)
+                        .stepPrice(5000000.0)
+                        .depositAmount(30000000.0)
+                        .status(AuctionStatus.ACTIVE)
+                        .regStartTime(LocalDateTime.now().minusDays(4))
+                        .regEndTime(LocalDateTime.now().minusDays(1))
+                        .bidStartTime(LocalDateTime.now())
+                        .bidEndTime(LocalDateTime.now().plusDays(1))
+                        .category(categoryRepository.findAll().stream().filter(c -> c.getName().equals("Trang sức")).findFirst().orElse(watch))
+                        .location(hn)
+                        .seller(seller)
+                        .build();
+
+                auctionRepository.saveAll(Arrays.asList(auction1, auction2, auction3, auction4, auction5, auction6, auction7, auction8));
             }
         }
     }
@@ -226,14 +299,27 @@ public class DatabaseSeeder implements CommandLineRunner {
                 Auction auction3 = auctionRepository.findAll().stream().filter(a -> a.getTitle().contains("iPhone")).findFirst().orElse(null);
                 Auction auction4 = auctionRepository.findAll().stream().filter(a -> a.getTitle().contains("Sony")).findFirst().orElse(null);
 
+                Auction auction5 = auctionRepository.findAll().stream().filter(a -> a.getTitle().contains("Macbook")).findFirst().orElse(null);
+                Auction auction6 = auctionRepository.findAll().stream().filter(a -> a.getTitle().contains("Hermes")).findFirst().orElse(null);
+                Auction auction7 = auctionRepository.findAll().stream().filter(a -> a.getTitle().contains("Tượng")).findFirst().orElse(null);
+                Auction auction8 = auctionRepository.findAll().stream().filter(a -> a.getTitle().contains("Nhẫn")).findFirst().orElse(null);
+
                 if (admin != null && seller != null && user1 != null && auction1 != null && auction2 != null && auction3 != null && auction4 != null) {
                     
                     // 1. AuctionImage
-                    AuctionImage img1 = AuctionImage.builder().auction(auction1).imageUrl("https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&q=80&w=800").isPrimary(true).build();
-                    AuctionImage img2 = AuctionImage.builder().auction(auction2).imageUrl("https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800").isPrimary(true).build();
-                    AuctionImage img3 = AuctionImage.builder().auction(auction3).imageUrl("https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&q=80&w=800").isPrimary(true).build();
-                    AuctionImage img4 = AuctionImage.builder().auction(auction4).imageUrl("https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?auto=format&fit=crop&q=80&w=800").isPrimary(true).build();
-                    auctionImageRepository.saveAll(Arrays.asList(img1, img2, img3, img4));
+                    List<AuctionImage> images = new java.util.ArrayList<>(Arrays.asList(
+                        AuctionImage.builder().auction(auction1).imageUrl("https://images.unsplash.com/photo-1547996160-81dfa63595aa?auto=format&fit=crop&q=80&w=800").isPrimary(true).build(),
+                        AuctionImage.builder().auction(auction2).imageUrl("https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800").isPrimary(true).build(),
+                        AuctionImage.builder().auction(auction3).imageUrl("https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&q=80&w=800").isPrimary(true).build(),
+                        AuctionImage.builder().auction(auction4).imageUrl("https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb?auto=format&fit=crop&q=80&w=800").isPrimary(true).build()
+                    ));
+
+                    if (auction5 != null) images.add(AuctionImage.builder().auction(auction5).imageUrl("https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&q=80&w=800").isPrimary(true).build());
+                    if (auction6 != null) images.add(AuctionImage.builder().auction(auction6).imageUrl("https://images.unsplash.com/photo-1584916201218-f4242ceb4809?auto=format&fit=crop&q=80&w=800").isPrimary(true).build());
+                    if (auction7 != null) images.add(AuctionImage.builder().auction(auction7).imageUrl("https://images.unsplash.com/photo-1605806616949-1e87b487cb2a?auto=format&fit=crop&q=80&w=800").isPrimary(true).build());
+                    if (auction8 != null) images.add(AuctionImage.builder().auction(auction8).imageUrl("https://images.unsplash.com/photo-1605100804763-247f67b2548e?auto=format&fit=crop&q=80&w=800").isPrimary(true).build());
+                    
+                    auctionImageRepository.saveAll(images);
 
                 // 2. AuctionRegistration
                 AuctionRegistration reg1 = AuctionRegistration.builder().auction(auction1).user(user1).registeredAt(LocalDateTime.now().minusDays(1)).build();

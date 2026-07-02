@@ -29,6 +29,7 @@ import com.example.daugiaonline.enums.TransactionType;
 import com.example.daugiaonline.enums.TransactionStatus;
 import com.example.daugiaonline.infrastructure.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -44,6 +45,7 @@ import com.example.daugiaonline.exception.AppException;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuctionServiceImpl implements AuctionService {
 
     private final AuctionRepository auctionRepository;
@@ -59,8 +61,12 @@ public class AuctionServiceImpl implements AuctionService {
     private final TransactionRepository transactionRepository;
 
     @Override
-    public List<AuctionDto> getAllAuctions() {
-        return auctionRepository.findAll().stream()
+    public List<AuctionDto> getAllAuctions(AuctionStatus status) {
+        List<Auction> auctions = (status != null) 
+            ? auctionRepository.findByStatusOrderByIdDesc(status) 
+            : auctionRepository.findAll();
+            
+        return auctions.stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
@@ -128,6 +134,24 @@ public class AuctionServiceImpl implements AuctionService {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        LocalDateTime regStart = request.getRegStartTime() != null ? request.getRegStartTime() : now;
+        LocalDateTime regEnd = request.getRegEndTime() != null ? request.getRegEndTime() : (request.getBidEndTime() != null ? request.getBidEndTime().minusDays(1) : now.plusDays(6));
+        LocalDateTime bidStart = request.getBidStartTime() != null ? request.getBidStartTime() : now;
+        LocalDateTime bidEnd = request.getBidEndTime() != null ? request.getBidEndTime() : now.plusDays(7);
+
+        if (regEnd.isBefore(regStart) || regEnd.isEqual(regStart)) {
+            throw new BadRequestException("Thời gian kết thúc đăng ký phải lớn hơn thời gian bắt đầu đăng ký");
+        }
+        if (bidStart.isBefore(regEnd)) {
+            throw new BadRequestException("Thời gian bắt đầu đấu giá phải sau hoặc bằng thời gian kết thúc đăng ký");
+        }
+        if (bidEnd.isBefore(bidStart) || bidEnd.isEqual(bidStart)) {
+            throw new BadRequestException("Thời gian kết thúc đấu giá phải lớn hơn thời gian bắt đầu");
+        }
+        if (bidEnd.isBefore(now)) {
+            throw new BadRequestException("Thời gian kết thúc đấu giá không được ở trong quá khứ");
+        }
+
         Auction auction = Auction.builder()
                 .title(request.getTitle())
                 .description(request.getDescription())
@@ -139,10 +163,10 @@ public class AuctionServiceImpl implements AuctionService {
                 .category(category)
                 .location(location)
                 .status(com.example.daugiaonline.enums.AuctionStatus.PENDING)
-                .regStartTime(now)
-                .regEndTime(request.getBidEndTime() != null ? request.getBidEndTime().minusDays(1) : now.plusDays(6))
-                .bidStartTime(now)
-                .bidEndTime(request.getBidEndTime() != null ? request.getBidEndTime() : now.plusDays(7))
+                .regStartTime(regStart)
+                .regEndTime(regEnd)
+                .bidStartTime(bidStart)
+                .bidEndTime(bidEnd)
                 .thumbnail(thumbnailUrl)
                 .build();
 
@@ -185,6 +209,10 @@ public class AuctionServiceImpl implements AuctionService {
         if (!auctionRepository.existsById(id)) {
             throw new ResourceNotFoundException("Auction not found with id: " + id);
         }
+        List<AuctionRegistration> registrations = registrationRepository.findByAuctionId(id);
+        if (!registrations.isEmpty()) {
+            throw new BadRequestException("Không thể xóa phiên đấu giá đã có người đăng ký tham gia");
+        }
         auctionRepository.deleteById(id);
     }
 
@@ -193,6 +221,12 @@ public class AuctionServiceImpl implements AuctionService {
     public void processExpiredAuctions() {
         List<Auction> expiredAuctions = auctionRepository.findByStatusAndBidEndTimeBefore(AuctionStatus.ACTIVE, LocalDateTime.now());
         for (Auction auction : expiredAuctions) {
+            
+            // NGAY LẬP TỨC kiểm tra lại điều kiện để loại bỏ các case đã xử lý (Double check)
+            if (auction.getStatus() != AuctionStatus.ACTIVE) {
+                continue;
+            }
+
             List<Bid> bids = bidRepository.findByAuctionIdOrderByBidAmountDesc(auction.getId());
             List<AuctionRegistration> registrations = registrationRepository.findByAuctionId(auction.getId());
             User winner = null;
@@ -203,6 +237,8 @@ public class AuctionServiceImpl implements AuctionService {
                 auction.setStatus(AuctionStatus.SOLD);
                 auction.setWinner(winner);
                 auction.setWinningPrice(highestBid.getBidAmount());
+                // CHỐT TRẠNG THÁI XUỐNG DB NGAY LẬP TỨC
+                auctionRepository.save(auction);
 
                 Order order = Order.builder()
                         .auction(auction)
@@ -226,18 +262,29 @@ public class AuctionServiceImpl implements AuctionService {
                         .build();
                 notificationRepository.save(sellerNotif);
 
-                emailService.sendHtmlEmail(winner.getEmail(), "Kết quả đấu giá: THẮNG", "Bạn đã thắng phiên đấu giá " + auction.getTitle());
-                emailService.sendHtmlEmail(auction.getSeller().getEmail(), "Kết quả đấu giá: ĐÃ BÁN", "Phiên đấu giá " + auction.getTitle() + " đã có người mua.");
+                try {
+                    emailService.sendHtmlEmail(winner.getEmail(), "Kết quả đấu giá: THẮNG", "Bạn đã thắng phiên đấu giá " + auction.getTitle());
+                    emailService.sendHtmlEmail(auction.getSeller().getEmail(), "Kết quả đấu giá: ĐÃ BÁN", "Phiên đấu giá " + auction.getTitle() + " đã có người mua.");
+                } catch (Exception e) {
+                    log.error("Lỗi khi gửi email thông báo trúng đấu giá: ", e);
+                }
             } else {
                 auction.setStatus(AuctionStatus.UNSOLD);
+                // CHỐT TRẠNG THÁI XUỐNG DB NGAY LẬP TỨC
+                auctionRepository.save(auction);
+                
                 Notification sellerNotif = Notification.builder()
                         .user(auction.getSeller())
                         .message("Phiên đấu giá " + auction.getTitle() + " đã kết thúc mà không có người trả giá.")
                         .build();
                 notificationRepository.save(sellerNotif);
-                emailService.sendHtmlEmail(auction.getSeller().getEmail(), "Kết quả đấu giá: KHÔNG THÀNH CÔNG", "Phiên đấu giá " + auction.getTitle() + " không có người trả giá.");
+                
+                try {
+                    emailService.sendHtmlEmail(auction.getSeller().getEmail(), "Kết quả đấu giá: KHÔNG THÀNH CÔNG", "Phiên đấu giá " + auction.getTitle() + " không có người trả giá.");
+                } catch (Exception e) {
+                    log.error("Lỗi khi gửi email thông báo không thành công: ", e);
+                }
             }
-            auctionRepository.save(auction);
             
             // Hoàn cọc cho người thua hoặc cho mọi người nếu UNSOLD
             for (AuctionRegistration reg : registrations) {
@@ -255,6 +302,35 @@ public class AuctionServiceImpl implements AuctionService {
                             .status(TransactionStatus.SUCCESS)
                             .build();
                     transactionRepository.save(transaction);
+                }
+            }
+        }
+    }
+
+    @Override
+    @Transactional
+    public void processUnpaidAuctions() {
+        // Find auctions that have been SOLD but bidEndTime is older than 3 days
+        LocalDateTime cutoffTime = LocalDateTime.now().minusDays(3);
+        List<Auction> unpaidAuctions = auctionRepository.findUnpaidAuctions(AuctionStatus.SOLD, cutoffTime);
+        for (Auction auction : unpaidAuctions) {
+            User defaulter = auction.getWinner();
+            
+            auction.setStatus(AuctionStatus.UNSOLD);
+            auction.setWinner(null);
+            auctionRepository.save(auction);
+            
+            if (defaulter != null) {
+                Notification notif = Notification.builder()
+                        .user(defaulter)
+                        .message("Phiên đấu giá '" + auction.getTitle() + "' đã bị hủy do quá hạn thanh toán. Bạn đã mất cọc.")
+                        .build();
+                notificationRepository.save(notif);
+                
+                try {
+                    emailService.sendHtmlEmail(defaulter.getEmail(), "Cảnh báo: Hủy kết quả đấu giá", "Bạn đã không thanh toán đúng hạn cho phiên đấu giá '" + auction.getTitle() + "'. Tiền cọc của bạn đã bị thu hồi.");
+                } catch (Exception e) {
+                    log.error("Lỗi khi gửi email thông báo hủy đấu giá: ", e);
                 }
             }
         }
@@ -288,13 +364,15 @@ public class AuctionServiceImpl implements AuctionService {
 
         double userBalance = user.getBalance() != null ? user.getBalance() : 0.0;
         double winningPrice = auction.getWinningPrice() != null ? auction.getWinningPrice() : 0.0;
+        double depositAmount = auction.getDepositAmount() != null ? auction.getDepositAmount() : 0.0;
+        double amountToPay = winningPrice - depositAmount;
 
-        if (userBalance < winningPrice) {
+        if (userBalance < amountToPay) {
             throw new AppException("Số dư không đủ, vui lòng nạp thêm tiền");
         }
 
-        // Trừ tiền người mua
-        user.setBalance(userBalance - winningPrice);
+        // Trừ tiền người mua (chỉ trừ phần còn lại sau khi đã trừ cọc)
+        user.setBalance(userBalance - amountToPay);
         userRepository.save(user);
 
         // Cộng tiền người bán
@@ -306,6 +384,12 @@ public class AuctionServiceImpl implements AuctionService {
         // Cập nhật trạng thái
         auction.setStatus(AuctionStatus.PAID);
         auctionRepository.save(auction);
+        
+        // Cập nhật trạng thái Order
+        orderRepository.findByAuctionId(auctionId).ifPresent(order -> {
+            order.setStatus(OrderStatus.PREPARING);
+            orderRepository.save(order);
+        });
 
         // Lưu lịch sử giao dịch
         Transaction transaction = Transaction.builder()
